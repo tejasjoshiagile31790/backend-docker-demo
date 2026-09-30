@@ -1,0 +1,10 @@
+services:
+  backend:
+    build:
+      context: .
+    # container_name: docker_demo_be_container
+    ports:
+      - "5001:5001"
+    environment:
+      PORT: 5001
+      MONGODB_URI: mongodb://host.docker.internal:27017/react_docker_demo
