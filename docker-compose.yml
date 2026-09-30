@@ -7,4 +7,5 @@ services:
       - "5001:5001"
     environment:
       PORT: 5001
-      MONGODB_URI: mongodb://host.docker.internal:27017/react_docker_demo
+      # MONGODB_URI: mongodb://host.docker.internal:27017/react_docker_demo
+      MONGODB_URI: ${MONGODB_URI}

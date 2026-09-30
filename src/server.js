@@ -30,7 +30,7 @@ const connectDB = async () => {
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   console.log('Health check endpoint called');
-  
+
   res.json({ status: 'ok' });
 });
 
@@ -49,6 +49,27 @@ app.get('/api/users', async (req, res) => {
     res.json(serializedUsers);
   } catch (err) {
     console.error('Error fetching users:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Seed users endpoint
+app.post('/api/seed', async (req, res) => {
+  const { password } = req.body;
+  if (password !== 'ADMIN') {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const collection = db.collection('users');
+    await collection.deleteMany({});
+    const usersToInsert = Array.from({ length: 10 }, (_, i) => ({
+      name: `User ${i + 1}`,
+      email: `user${i + 1}@example.com`,
+    }));
+    const result = await collection.insertMany(usersToInsert);
+    res.json({ message: `Seeded ${result.insertedCount} users`, insertedIds: result.insertedIds });
+  } catch (err) {
+    console.error('Error seeding users:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
