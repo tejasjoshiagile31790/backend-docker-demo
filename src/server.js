@@ -13,6 +13,12 @@ const PORT = process.env.PORT || 5000;
 app.use(cors()); // Allow all origins for development
 app.use(express.json()); // Parse JSON bodies
 
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
+
 // MongoDB connection
 let db;
 const connectDB = async () => {
@@ -28,14 +34,14 @@ const connectDB = async () => {
 };
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (req,res) => {
   console.log('Health check endpoint called');
 
   res.json({ status: 'ok' });
 });
 
 // Get users endpoint
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', async (res) => {
   try {
     console.log('Fetching users from MongoDB');
     const collection = db.collection('users');
@@ -55,8 +61,10 @@ app.get('/api/users', async (req, res) => {
 
 // Seed users endpoint
 app.post('/api/seed', async (req, res) => {
+  console.log('Seed endpoint called');
   const { password } = req.body;
   if (password !== 'ADMIN') {
+    console.log('Unauthorized seed attempt');
     return res.status(401).json({ error: 'Unauthorized' });
   }
   try {
@@ -67,6 +75,7 @@ app.post('/api/seed', async (req, res) => {
       email: `user${i + 1}@example.com`,
     }));
     const result = await collection.insertMany(usersToInsert);
+    console.log(`Seeded ${result.insertedCount} users`);
     res.json({ message: `Seeded ${result.insertedCount} users`, insertedIds: result.insertedIds });
   } catch (err) {
     console.error('Error seeding users:', err);
