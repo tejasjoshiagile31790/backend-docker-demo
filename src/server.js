@@ -34,14 +34,14 @@ const connectDB = async () => {
 };
 
 // Health check endpoint
-app.get('/api/health', (req,res) => {
+app.get('/api/health', (req, res) => {
   console.log('Health check endpoint called');
 
   res.json({ status: 'ok' });
 });
 
 // Get users endpoint
-app.get('/api/users', async (res) => {
+app.get('/api/users', async (_req, res) => {
   try {
     console.log('Fetching users from MongoDB');
     const collection = db.collection('users');
