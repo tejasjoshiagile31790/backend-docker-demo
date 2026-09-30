@@ -1,8 +1,9 @@
 // backend/src/server.js
 import express from 'express';
-import { MongoClient } from 'mongodb';
+import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import User from './models/User.js';
 
 dotenv.config();
 
@@ -14,19 +15,16 @@ app.use(cors()); // Allow all origins for development
 app.use(express.json()); // Parse JSON bodies
 
 // Request logging middleware
-app.use((req, res, next) => {
+app.use((req, _res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
-// MongoDB connection
-let db;
+// MongoDB connection via Mongoose
 const connectDB = async () => {
   try {
-    const client = new MongoClient(process.env.MONGODB_URI);
-    await client.connect();
+    await mongoose.connect(process.env.MONGODB_URI);
     console.log('Connected to MongoDB----');
-    db = client.db(); // Gets default database from URI or use client.db('react_docker_demo')
   } catch (err) {
     console.error('MongoDB connection error:', err);
     process.exit(1);
@@ -34,7 +32,7 @@ const connectDB = async () => {
 };
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   console.log('Health check endpoint called');
 
   res.json({ status: 'ok' });
@@ -44,17 +42,109 @@ app.get('/api/health', (req, res) => {
 app.get('/api/users', async (_req, res) => {
   try {
     console.log('Fetching users from MongoDB');
-    const collection = db.collection('users');
-    const users = await collection.find({}).toArray();
-    // Convert ObjectId to string for JSON serialization
+    const users = await User.find({});
+    // Convert Mongoose documents to plain objects with _id as string
     const serializedUsers = users.map(user => ({
-      ...user,
+      ...user.toObject(),
       _id: user._id.toString()
     }));
     console.log(`Fetched ${serializedUsers.length} users`);
     res.json(serializedUsers);
   } catch (err) {
     console.error('Error fetching users:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get single user
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    console.log(`Fetching user with id: ${req.params.id}`);
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ ...user.toObject(), _id: user._id.toString() });
+  } catch (err) {
+    console.error('Error fetching user:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create user
+app.post('/api/users', async (req, res) => {
+  console.log('Create user endpoint called');
+  const { name, email, age, city } = req.body;
+  // Basic validation
+  if (!name || !email || !age || !city) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  try {
+    const user = new User({ name, email, age, city });
+    const savedUser = await user.save();
+    console.log(`User created with id: ${savedUser._id}`);
+    res.status(201).json({
+      message: 'User created successfully',
+      user: { ...savedUser.toObject(), _id: savedUser._id.toString() }
+    });
+  } catch (err) {
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+    console.error('Error creating user:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update user
+app.put('/api/users/:id', async (req, res) => {
+  console.log(`Update user endpoint called for id: ${req.params.id}`);
+  const { name, email, age, city } = req.body;
+  // Basic validation
+  if (!name || !email || !age || !city) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { name, email, age, city },
+      { new: true, runValidators: true }
+    );
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    console.log(`User updated: ${user._id}`);
+    res.json({
+      message: 'User updated successfully',
+      user: { ...user.toObject(), _id: user._id.toString() }
+    });
+  } catch (err) {
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+    console.error('Error updating user:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete user
+app.delete('/api/users/:id', async (req, res) => {
+  console.log(`Delete user endpoint called for id: ${req.params.id}`);
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    console.log(`User deleted: ${user._id}`);
+    res.json({ message: 'User deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting user:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -68,15 +158,21 @@ app.post('/api/seed', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   try {
-    const collection = db.collection('users');
-    await collection.deleteMany({});
+    // Clear existing users
+    await User.deleteMany({});
+
+    // Create seed users
     const usersToInsert = Array.from({ length: 10 }, (_, i) => ({
       name: `User ${i + 1}`,
       email: `user${i + 1}@example.com`,
     }));
-    const result = await collection.insertMany(usersToInsert);
-    console.log(`Seeded ${result.insertedCount} users`);
-    res.json({ message: `Seeded ${result.insertedCount} users`, insertedIds: result.insertedIds });
+
+    const result = await User.insertMany(usersToInsert);
+    console.log(`Seeded ${result.length} users`);
+    res.json({
+      message: `Seeded ${result.length} users`,
+      insertedIds: result.map(user => user._id)
+    });
   } catch (err) {
     console.error('Error seeding users:', err);
     res.status(500).json({ error: 'Internal server error' });
